@@ -1,18 +1,21 @@
 # Creating the Azure Infrastructure using Terraform
 
-We built using Terraform in 2 phases the tf infra:
+## Pre-requisites:
+In order Terraform can work, please fill the AZURE SubscriptionID and TenantID inside the `terraform.tfvars` file.
 
-## 1st command (the Kubernetes infrastructure): 
-```
-terraform apply \
-  -target=azurerm_resource_group.main \
-  -target=azurerm_virtual_network.main \
-  -target=azurerm_subnet.aks \
-  -target=azurerm_log_analytics_workspace.main \
-  -target=azurerm_recovery_services_vault.main \
-  -target=azurerm_kubernetes_cluster.aks \
-  -target=azurerm_backup_policy_vm.aks
-```
+Also for AzureDevOps, you need to download from the DevOps Marketplace 2 Terraform plugins:
+
+https://marketplace.visualstudio.com/items?itemName=ms-devlabs.custom-terraform-tasks
+
+https://marketplace.visualstudio.com/items?itemName=JasonBJohnson.azure-pipelines-tasks-terraform
+
+
+
+## TERRAFORM 1st Phase (the Kubernetes infrastructure): 
+We built using Terraform in 2 phases the "tf infra", and latesr "tf apps":We built using Terraform in 2 phases the "tf infra" module, and later "tf apps":
+
+Please use: `terraform apply -target=module.infra`
+
 So only apply the AKS cluster now. Skip the rest for now.
 
 
@@ -20,7 +23,7 @@ then:
 ```
 az aks get-credentials \
   --resource-group aks-prod-rg \
-  --name aks-prod-cluster \
+  --name aks-prod \
   --admin \
   --file ~/.kube/aks-config
 ```
@@ -33,8 +36,8 @@ export KUBECONFIG=~/.kube/aks-config
 kubectl get nodes
 
 
-## 2nd command (Installing ArgoCD & Traefik): 
-Please use: `terraform apply`
+## Terraform 2nd Phase (Installing apps: ArgoCD & Traefik): 
+Please use: `terraform apply -target=module.apps`
 
 With this 2nd command, the other resources that are inside the phase2.tf file will be added (like Helm/Kubernetes ones), they depend on the AKS cluster being ready (used the phase1 command).
 
@@ -42,7 +45,6 @@ With this 2nd command, the other resources that are inside the phase2.tf file wi
 Finally: to visit Argo UI and Traefik Dashboard, you have to find the External-IP using `kubectl get svc -n traefik`, and later add in your `/etc/hosts` file like:
 
 14.33.146.195  argocd.aks-prod.eastus.cloudapp.azure.com
-
 14.33.146.195  traefik.aks-prod.eastus.cloudapp.azure.com
 
 for production purposes you need to create a DNS record in Azure DNS.
@@ -86,3 +88,60 @@ az resource delete \
 
 finally:
 `terraform destroy`
+
+
+# Setting up the Azure DevOps and can work correctly with Terraform & Azure Portal
+
+## Creating new Service Connection via Azure Portal (using Service Principal will make work the task `TerraformCLI@0`)
+➡ Go to Azure Active Directory > App registrations
+
+Click New registration
+
+Give it a name (currently in the pipeline we use the name `aks-serviceconnection`)
+
+Register it
+
+Go to Certificates & secrets → New client secret
+
+Copy the secret immediately
+
+*Until this part you can follow this video guide: https://www.youtube.com/watch?v=BX2WF9SOmyw
+
+
+Later, go to Subscriptions > [your subscription] > Access control (IAM) → Add Role Assignment
+
+Role: Contributor
+
+Assign access to: User, group, or service principal
+
+Select your App (e.g., terraform-sp)
+
+
+
+## Add to Azure DevOps Service Connection
+➡ Go to Azure DevOps:
+
+Project Settings → Service Connections
+
+Create new → Azure Resource Manager
+
+Choose "App registration or Managed Identity (manual)"
+
+Onde there, Fill in:
+
+- Subscription ID
+
+- Subscription Name
+
+- Tenant ID
+
+- Service Principal ID (Client ID)
+
+- Service Principal Key (Client Secret)
+
+
+# Terraform Backend
+
+Currently we are creating the backend with a bash file called `backend_creation.sh`
+
+Notice the the backend we are calling it `tfdevbackend2024pidant`, and this name is used in the pipeline config so far.

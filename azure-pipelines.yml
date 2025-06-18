@@ -1,0 +1,72 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+ branches:
+   include:
+     - main
+     - feature/*
+ paths:
+   include:
+     - modules/*
+     - azure-pipelines.yml
+
+stages:
+- stage: validate
+  jobs:
+    - job: tf_validate
+      pool:
+        name: azureagent
+      steps:
+      # we change to this long task-name because there was a Conflict of naming between plugins: TerraformInstaller@1 and TerraformCLI@0:
+      # - task: TerraformInstaller@1
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        inputs:
+          terraformVersion: 'latest'
+      - task: TerraformTask@5
+        inputs:
+          provider: 'azurerm'
+          command: 'init'
+          workingDirectory: '$(System.DefaultWorkingDirectory)'
+          backendAzureRmUseEntraIdForAuthentication: false
+          backendServiceArm: 'aks-serviceconnection'
+          backendAzureRmResourceGroupName: 'terraform-state-rg'
+          backendAzureRmStorageAccountName: 'tfdevbackend2024pidant'
+          backendAzureRmContainerName: 'tfstate'
+          backendAzureRmKey: 'dev.terraform.tfstate'
+      - task: TerraformTask@5
+        inputs:
+          provider: 'azurerm'
+          command: 'validate'
+          workingDirectory: '$(System.DefaultWorkingDirectory)'
+- stage: Dev_deploy
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  jobs: 
+  - job: terraform_apply_dev
+    pool:
+      name: azureagent
+    steps:
+    - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+      inputs:
+        terraformVersion: 'latest'
+    # in order to use TerraformCLI@0 you need to enable in the AzureDevOps Marketplace this plugin: https://marketplace.visualstudio.com/items?itemName=JasonBJohnson.azure-pipelines-tasks-terraform 
+    - task: TerraformCLI@0
+      displayName: 'Terraform Init'
+      inputs:
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)'
+        backendType: 'azurerm'
+        backendServiceArm: 'aks-serviceconnection'
+        backendAzureRmResourceGroupName: 'terraform-state-rg'
+        backendAzureRmStorageAccountName: 'tfdevbackend2024pidant'
+        backendAzureRmContainerName: 'tfstate'
+        backendAzureRmKey: 'dev.terraform.tfstate'
+    - task: TerraformCLI@0
+      displayName: 'Terraform Apply'
+      inputs:
+        command: 'apply'
+        workingDirectory: '$(System.DefaultWorkingDirectory)'
+        environmentServiceName: 'aks-serviceconnection'
+        commandOptions: '-target=module.infra'

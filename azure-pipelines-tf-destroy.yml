@@ -1,0 +1,32 @@
+trigger: none
+
+stages:
+- stage: Destroy
+  jobs:
+    - job: terraform_destroy
+      pool:
+        name: azureagent
+      steps:
+        - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+          inputs:
+            terraformVersion: 'latest'
+        
+        - task: TerraformCLI@0
+          displayName: 'Terraform Init'
+          inputs:
+            command: 'init'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            backendType: 'azurerm'
+            backendServiceArm: 'aks-serviceconnection'
+            backendAzureRmResourceGroupName: 'terraform-state-rg'
+            backendAzureRmStorageAccountName: 'tfdevbackend2024pidant'
+            backendAzureRmContainerName: 'tfstate'
+            backendAzureRmKey: 'dev.terraform.tfstate'
+
+        - task: TerraformCLI@0
+          displayName: 'Terraform Destroy'
+          inputs:
+            command: 'destroy'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            environmentServiceName: 'aks-serviceconnection'
+            commandOptions: '-auto-approve'
